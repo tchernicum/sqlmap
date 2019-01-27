@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import random
@@ -18,7 +18,7 @@ def dependencies():
 
 def tamper(payload, **kwargs):
     """
-    Adds multiple spaces around SQL keywords
+    Adds multiple spaces (' ') around SQL keywords
 
     Notes:
         * Useful to bypass very weak and bespoke web application firewalls
@@ -36,14 +36,14 @@ def tamper(payload, **kwargs):
     if payload:
         words = set()
 
-        for match in re.finditer(r"[A-Za-z_]+", payload):
+        for match in re.finditer(r"\b[A-Za-z_]+\b", payload):
             word = match.group()
 
             if word.upper() in kb.keywords:
                 words.add(word)
 
         for word in words:
-            retVal = re.sub("(?<=\W)%s(?=[^A-Za-z_(]|\Z)" % word, "%s%s%s" % (' ' * random.randrange(1, 4), word, ' ' * random.randrange(1, 4)), retVal)
-            retVal = re.sub("(?<=\W)%s(?=[(])" % word, "%s%s" % (' ' * random.randrange(1, 4), word), retVal)
+            retVal = re.sub(r"(?<=\W)%s(?=[^A-Za-z_(]|\Z)" % word, "%s%s%s" % (' ' * random.randrange(1, 4), word, ' ' * random.randrange(1, 4)), retVal)
+            retVal = re.sub(r"(?<=\W)%s(?=[(])" % word, "%s%s" % (' ' * random.randrange(1, 4), word), retVal)
 
     return retVal

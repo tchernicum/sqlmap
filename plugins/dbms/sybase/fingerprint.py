@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 from lib.core.common import Backend
@@ -46,7 +46,7 @@ class Fingerprint(GenericFingerprint):
         value += "active fingerprint: %s" % actVer
 
         if kb.bannerFp:
-            banVer = kb.bannerFp["dbmsVersion"]
+            banVer = kb.bannerFp.get("dbmsVersion")
             banVer = Format.getDbms([banVer])
             value += "\n%sbanner parsing fingerprint: %s" % (blank, banVer)
 
@@ -58,9 +58,7 @@ class Fingerprint(GenericFingerprint):
         return value
 
     def checkDbms(self):
-        if not conf.extensiveFp and (Backend.isDbmsWithin(SYBASE_ALIASES) \
-           or (conf.dbms or "").lower() in SYBASE_ALIASES) and Backend.getVersion() and \
-           Backend.getVersion().isdigit():
+        if not conf.extensiveFp and Backend.isDbmsWithin(SYBASE_ALIASES):
             setDbms("%s %s" % (DBMS.SYBASE, Backend.getVersion()))
 
             self.getBanner()

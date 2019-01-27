@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import os
@@ -31,8 +31,8 @@ def purge(directory):
     dirpaths = []
 
     for rootpath, directories, filenames in os.walk(directory):
-        dirpaths.extend([os.path.abspath(os.path.join(rootpath, _)) for _ in directories])
-        filepaths.extend([os.path.abspath(os.path.join(rootpath, _)) for _ in filenames])
+        dirpaths.extend(os.path.abspath(os.path.join(rootpath, _)) for _ in directories)
+        filepaths.extend(os.path.abspath(os.path.join(rootpath, _)) for _ in filenames)
 
     logger.debug("changing file attributes")
     for filepath in filepaths:
@@ -79,5 +79,5 @@ def purge(directory):
 
     try:
         shutil.rmtree(directory)
-    except OSError, ex:
+    except OSError as ex:
         logger.error("problem occurred while removing directory '%s' ('%s')" % (directory, getSafeExString(ex)))

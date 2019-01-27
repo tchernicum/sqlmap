@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import os
 import re
+import time
 
 from lib.controller.action import action
 from lib.controller.checks import checkSqlInjection
@@ -15,6 +16,7 @@ from lib.controller.checks import checkStability
 from lib.controller.checks import checkString
 from lib.controller.checks import checkRegexp
 from lib.controller.checks import checkConnection
+from lib.controller.checks import checkInternet
 from lib.controller.checks import checkNullConnection
 from lib.controller.checks import checkWaf
 from lib.controller.checks import heuristicCheckSqlInjection
@@ -41,6 +43,7 @@ from lib.core.common import urldecode
 from lib.core.data import conf
 from lib.core.data import kb
 from lib.core.data import logger
+from lib.core.decorators import stackedmethod
 from lib.core.enums import CONTENT_TYPE
 from lib.core.enums import HASHDB_KEYS
 from lib.core.enums import HEURISTIC_TEST
@@ -52,9 +55,12 @@ from lib.core.exception import SqlmapBaseException
 from lib.core.exception import SqlmapNoneDataException
 from lib.core.exception import SqlmapNotVulnerableException
 from lib.core.exception import SqlmapSilentQuitException
+from lib.core.exception import SqlmapSkipTargetException
+from lib.core.exception import SqlmapSystemException
 from lib.core.exception import SqlmapValueException
 from lib.core.exception import SqlmapUserQuitException
 from lib.core.settings import ASP_NET_CONTROL_REGEX
+from lib.core.settings import CSRF_TOKEN_PARAMETER_INFIXES
 from lib.core.settings import DEFAULT_GET_POST_DELIMITER
 from lib.core.settings import EMPTY_FORM_FIELDS_REGEX
 from lib.core.settings import IGNORE_PARAMETERS
@@ -65,7 +71,7 @@ from lib.core.settings import REFERER_ALIASES
 from lib.core.settings import USER_AGENT_ALIASES
 from lib.core.target import initTargetEnv
 from lib.core.target import setupTargetEnv
-from thirdparty.pagerank.pagerank import get_pagerank
+from lib.utils.hash import crackHashFile
 
 def _selectInjection():
     """
@@ -84,7 +90,7 @@ def _selectInjection():
         if point not in points:
             points[point] = injection
         else:
-            for key in points[point].keys():
+            for key in points[point]:
                 if key != 'data':
                     points[point][key] = points[point][key] or injection[key]
             points[point]['data'].update(injection['data'])
@@ -117,11 +123,11 @@ def _selectInjection():
                 message += "\n"
 
         message += "[q] Quit"
-        select = readInput(message, default="0")
+        choice = readInput(message, default='0').upper()
 
-        if select.isdigit() and int(select) < len(kb.injections) and int(select) >= 0:
-            index = int(select)
-        elif select[0] in ("Q", "q"):
+        if choice.isdigit() and int(choice) < len(kb.injections) and int(choice) >= 0:
+            index = int(choice)
+        elif choice == 'Q':
             raise SqlmapUserQuitException
         else:
             errMsg = "invalid choice"
@@ -141,7 +147,7 @@ def _formatInjection(inj):
         if inj.place == PLACE.CUSTOM_HEADER:
             payload = payload.split(',', 1)[1]
         if stype == PAYLOAD.TECHNIQUE.UNION:
-            count = re.sub(r"(?i)(\(.+\))|(\blimit[^A-Za-z]+)", "", sdata.payload).count(',') + 1
+            count = re.sub(r"(?i)(\(.+\))|(\blimit[^a-z]+)", "", sdata.payload).count(',') + 1
             title = re.sub(r"\d+ to \d+", str(count), title)
             vector = agent.forgeUnionQuery("[QUERY]", vector[0], vector[1], vector[2], None, None, vector[5], vector[6])
             if count == 1:
@@ -150,19 +156,23 @@ def _formatInjection(inj):
             vector = "%s%s" % (vector, comment)
         data += "    Type: %s\n" % PAYLOAD.SQLINJECTION[stype]
         data += "    Title: %s\n" % title
-        data += "    Payload: %s\n" % urldecode(payload, unsafe="&", plusspace=(inj.place != PLACE.GET and kb.postSpaceToPlus))
+        data += "    Payload: %s\n" % urldecode(payload, unsafe="&", spaceplus=(inj.place != PLACE.GET and kb.postSpaceToPlus))
         data += "    Vector: %s\n\n" % vector if conf.verbose > 1 else "\n"
 
     return data
 
 def _showInjections():
+    if conf.wizard and kb.wizardMode:
+        kb.wizardMode = False
+
     if kb.testQueryCount > 0:
         header = "sqlmap identified the following injection point(s) with "
         header += "a total of %d HTTP(s) requests" % kb.testQueryCount
     else:
         header = "sqlmap resumed the following injection point(s) from stored session"
 
-    if hasattr(conf, "api"):
+    if conf.api:
+        conf.dumper.string("", {"url": conf.url, "query": conf.parameters.get(PLACE.GET), "data": conf.parameters.get(PLACE.POST)}, content_type=CONTENT_TYPE.TARGET)
         conf.dumper.string("", kb.injections, content_type=CONTENT_TYPE.TECHNIQUES)
     else:
         data = "".join(set(_formatInjection(_) for _ in kb.injections)).rstrip("\n")
@@ -183,8 +193,8 @@ def _randomFillBlankFields(value):
 
     if extractRegexResult(EMPTY_FORM_FIELDS_REGEX, value):
         message = "do you want to fill blank fields with random values? [Y/n] "
-        test = readInput(message, default="Y")
-        if not test or test[0] in ("y", "Y"):
+
+        if readInput(message, default='Y', boolean=True):
             for match in re.finditer(EMPTY_FORM_FIELDS_REGEX, retVal):
                 item = match.group("result")
                 if not any(_ in item for _ in IGNORE_PARAMETERS) and not re.search(ASP_NET_CONTROL_REGEX, item):
@@ -234,23 +244,33 @@ def _saveToResultsFile():
         if key not in results:
             results[key] = []
 
-        results[key].extend(injection.data.keys())
+        results[key].extend(list(injection.data.keys()))
 
-    for key, value in results.items():
-        place, parameter, notes = key
-        line = "%s,%s,%s,%s,%s%s" % (safeCSValue(kb.originalUrls.get(conf.url) or conf.url), place, parameter, "".join(techniques[_][0].upper() for _ in sorted(value)), notes, os.linesep)
-        conf.resultsFP.writelines(line)
+    try:
+        for key, value in results.items():
+            place, parameter, notes = key
+            line = "%s,%s,%s,%s,%s%s" % (safeCSValue(kb.originalUrls.get(conf.url) or conf.url), place, parameter, "".join(techniques[_][0].upper() for _ in sorted(value)), notes, os.linesep)
+            conf.resultsFP.write(line)
 
-    if not results:
-        line = "%s,,,,%s" % (conf.url, os.linesep)
-        conf.resultsFP.writelines(line)
+        if not results:
+            line = "%s,,,,%s" % (conf.url, os.linesep)
+            conf.resultsFP.write(line)
 
+        conf.resultsFP.flush()
+    except IOError as ex:
+        errMsg = "unable to write to the results file '%s' ('%s'). " % (conf.resultsFilename, getSafeExString(ex))
+        raise SqlmapSystemException(errMsg)
+
+@stackedmethod
 def start():
     """
     This function calls a function that performs checks on both URL
     stability and all GET, POST, Cookie and User-Agent parameters to
     check if they are dynamic and SQL injection affected
     """
+
+    if conf.hashFile:
+        crackHashFile(conf.hashFile)
 
     if conf.direct:
         initTargetEnv()
@@ -276,12 +296,28 @@ def start():
 
     for targetUrl, targetMethod, targetData, targetCookie, targetHeaders in kb.targets:
         try:
+
+            if conf.checkInternet:
+                infoMsg = "checking for Internet connection"
+                logger.info(infoMsg)
+
+                if not checkInternet():
+                    warnMsg = "[%s] [WARNING] no connection detected" % time.strftime("%X")
+                    dataToStdout(warnMsg)
+
+                    while not checkInternet():
+                        dataToStdout('.')
+                        time.sleep(5)
+
+                    dataToStdout("\n")
+
             conf.url = targetUrl
             conf.method = targetMethod.upper() if targetMethod else targetMethod
             conf.data = targetData
             conf.cookie = targetCookie
             conf.httpHeaders = list(initialHeaders)
             conf.httpHeaders.extend(targetHeaders or [])
+            conf.httpHeaders = [conf.httpHeaders[i] for i in xrange(len(conf.httpHeaders)) if conf.httpHeaders[i][0].upper() not in (__[0].upper() for __ in conf.httpHeaders[i + 1:])]
 
             initTargetEnv()
             parseTargetUrl()
@@ -305,7 +341,9 @@ def start():
                     message = "SQL injection vulnerability has already been detected "
                     message += "against '%s'. Do you want to skip " % conf.hostname
                     message += "further tests involving it? [Y/n]"
-                    kb.skipVulnHost = readInput(message, default="Y").upper() != 'N'
+
+                    kb.skipVulnHost = readInput(message, default='Y', boolean=True)
+
                 testSqlInj = not kb.skipVulnHost
 
             if not testSqlInj:
@@ -319,7 +357,7 @@ def start():
                 if conf.forms and conf.method:
                     message = "[#%d] form:\n%s %s" % (hostCount, conf.method, targetUrl)
                 else:
-                    message = "URL %d:\n%s %s%s" % (hostCount, HTTPMETHOD.GET, targetUrl, " (PageRank: %s)" % get_pagerank(targetUrl) if conf.googleDork and conf.pageRank else "")
+                    message = "URL %d:\n%s %s" % (hostCount, HTTPMETHOD.GET, targetUrl)
 
                 if conf.cookie:
                     message += "\nCookie: %s" % conf.cookie
@@ -332,9 +370,13 @@ def start():
                         continue
 
                     message += "\ndo you want to test this form? [Y/n/q] "
-                    test = readInput(message, default="Y")
+                    choice = readInput(message, default='Y').upper()
 
-                    if not test or test[0] in ("y", "Y"):
+                    if choice == 'N':
+                        continue
+                    elif choice == 'Q':
+                        break
+                    else:
                         if conf.method != HTTPMETHOD.GET:
                             message = "Edit %s data [default: %s]%s: " % (conf.method, urlencode(conf.data) if conf.data else "None", " (Warning: blank fields detected)" if conf.data and extractRegexResult(EMPTY_FORM_FIELDS_REGEX, conf.data) else "")
                             conf.data = readInput(message, default=conf.data)
@@ -342,9 +384,8 @@ def start():
                             conf.data = urldecode(conf.data) if conf.data and urlencode(DEFAULT_GET_POST_DELIMITER, None) not in conf.data else conf.data
 
                         else:
-                            if targetUrl.find("?") > -1:
-                                firstPart = targetUrl[:targetUrl.find("?")]
-                                secondPart = targetUrl[targetUrl.find("?") + 1:]
+                            if '?' in targetUrl:
+                                firstPart, secondPart = targetUrl.split('?', 1)
                                 message = "Edit GET data [default: %s]: " % secondPart
                                 test = readInput(message, default=secondPart)
                                 test = _randomFillBlankFields(test)
@@ -352,21 +393,14 @@ def start():
 
                         parseTargetUrl()
 
-                    elif test[0] in ("n", "N"):
-                        continue
-                    elif test[0] in ("q", "Q"):
-                        break
-
                 else:
                     message += "\ndo you want to test this URL? [Y/n/q]"
-                    test = readInput(message, default="Y")
+                    choice = readInput(message, default='Y').upper()
 
-                    if not test or test[0] in ("y", "Y"):
-                        pass
-                    elif test[0] in ("n", "N"):
+                    if choice == 'N':
                         dataToStdout(os.linesep)
                         continue
-                    elif test[0] in ("q", "Q"):
+                    elif choice == 'Q':
                         break
 
                     infoMsg = "testing URL '%s'" % targetUrl
@@ -385,8 +419,7 @@ def start():
             if conf.nullConnection:
                 checkNullConnection()
 
-            if (len(kb.injections) == 0 or (len(kb.injections) == 1 and kb.injections[0].place is None)) \
-                and (kb.injection.place is None or kb.injection.parameter is None):
+            if (len(kb.injections) == 0 or (len(kb.injections) == 1 and kb.injections[0].place is None)) and (kb.injection.place is None or kb.injection.parameter is None):
 
                 if not any((conf.string, conf.notString, conf.regexp)) and PAYLOAD.TECHNIQUE.BOOLEAN in conf.tech:
                     # NOTE: this is not needed anymore, leaving only to display
@@ -394,7 +427,7 @@ def start():
                     checkStability()
 
                 # Do a little prioritization reorder of a testable parameter list
-                parameters = conf.parameters.keys()
+                parameters = list(conf.parameters.keys())
 
                 # Order of testing list (first to last)
                 orderList = (PLACE.CUSTOM_POST, PLACE.CUSTOM_HEADER, PLACE.URI, PLACE.POST, PLACE.GET)
@@ -476,14 +509,14 @@ def start():
                             infoMsg = "skipping %s parameter '%s'" % (paramType, parameter)
                             logger.info(infoMsg)
 
-                        elif parameter == conf.csrfToken:
+                        elif conf.csrfToken and re.search(conf.csrfToken, parameter, re.I):
                             testSqlInj = False
 
                             infoMsg = "skipping anti-CSRF token parameter '%s'" % parameter
                             logger.info(infoMsg)
 
                         # Ignore session-like parameters for --level < 4
-                        elif conf.level < 4 and (parameter.upper() in IGNORE_PARAMETERS or parameter.upper().startswith(GOOGLE_ANALYTICS_COOKIE_PREFIX)):
+                        elif conf.level < 4 and (parameter.upper() in IGNORE_PARAMETERS or any(_ in parameter.lower() for _ in CSRF_TOKEN_PARAMETER_INFIXES) or parameter.upper().startswith(GOOGLE_ANALYTICS_COOKIE_PREFIX)):
                             testSqlInj = False
 
                             infoMsg = "ignoring %s parameter '%s'" % (paramType, parameter)
@@ -502,7 +535,7 @@ def start():
 
                                     testSqlInj = False
                             else:
-                                infoMsg = "%s parameter '%s' is dynamic" % (paramType, parameter)
+                                infoMsg = "%s parameter '%s' appears to be dynamic" % (paramType, parameter)
                                 logger.info(infoMsg)
 
                         kb.testedParams.add(paramKey)
@@ -543,9 +576,8 @@ def start():
 
                                         msg = "%s parameter '%s' " % (injection.place, injection.parameter)
                                         msg += "is vulnerable. Do you want to keep testing the others (if any)? [y/N] "
-                                        test = readInput(msg, default="N")
 
-                                        if test[0] not in ("y", "Y"):
+                                        if not readInput(msg, default='N', boolean=True):
                                             proceed = False
                                             paramKey = (conf.hostname, conf.path, None, None)
                                             kb.testedParams.add(paramKey)
@@ -565,11 +597,11 @@ def start():
                     errMsg += "(e.g. GET parameter 'id' in 'www.site.com/index.php?id=1')"
                     raise SqlmapNoneDataException(errMsg)
                 else:
-                    errMsg = "all tested parameters appear to be not injectable."
+                    errMsg = "all tested parameters do not appear to be injectable."
 
                     if conf.level < 5 or conf.risk < 3:
-                        errMsg += " Try to increase '--level'/'--risk' values "
-                        errMsg += "to perform more tests."
+                        errMsg += " Try to increase values for '--level'/'--risk' options "
+                        errMsg += "if you wish to perform more tests."
 
                     if isinstance(conf.tech, list) and len(conf.tech) < 5:
                         errMsg += " Rerun without providing the option '--technique'."
@@ -592,15 +624,9 @@ def start():
 
                     if kb.heuristicTest == HEURISTIC_TEST.POSITIVE:
                         errMsg += " As heuristic test turned out positive you are "
-                        errMsg += "strongly advised to continue on with the tests. "
-                        errMsg += "Please, consider usage of tampering scripts as "
-                        errMsg += "your target might filter the queries."
+                        errMsg += "strongly advised to continue on with the tests."
 
-                    if not conf.string and not conf.notString and not conf.regexp:
-                        errMsg += " Also, you can try to rerun by providing "
-                        errMsg += "either a valid value for option '--string' "
-                        errMsg += "(or '--regexp')."
-                    elif conf.string:
+                    if conf.string:
                         errMsg += " Also, you can try to rerun by providing a "
                         errMsg += "valid value for option '--string' as perhaps the string you "
                         errMsg += "have chosen does not match "
@@ -613,8 +639,11 @@ def start():
 
                     if not conf.tamper:
                         errMsg += " If you suspect that there is some kind of protection mechanism "
-                        errMsg += "involved (e.g. WAF) maybe you could retry "
-                        errMsg += "with an option '--tamper' (e.g. '--tamper=space2comment')"
+                        errMsg += "involved (e.g. WAF) maybe you could try to use "
+                        errMsg += "option '--tamper' (e.g. '--tamper=space2comment')"
+
+                        if not conf.randomAgent:
+                            errMsg += " and/or switch '--random-agent'"
 
                     raise SqlmapNotVulnerableException(errMsg.rstrip('.'))
             else:
@@ -629,9 +658,7 @@ def start():
             if kb.injection.place is not None and kb.injection.parameter is not None:
                 if conf.multipleTargets:
                     message = "do you want to exploit this SQL injection? [Y/n] "
-                    exploit = readInput(message, default="Y")
-
-                    condition = not exploit or exploit[0] in ("y", "Y")
+                    condition = readInput(message, default='Y', boolean=True)
                 else:
                     condition = True
 
@@ -644,16 +671,17 @@ def start():
                 logger.warn(warnMsg)
 
                 message = "do you want to skip to the next target in list? [Y/n/q]"
-                test = readInput(message, default="Y")
+                choice = readInput(message, default='Y').upper()
 
-                if not test or test[0] in ("y", "Y"):
-                    pass
-                elif test[0] in ("n", "N"):
+                if choice == 'N':
                     return False
-                elif test[0] in ("q", "Q"):
+                elif choice == 'Q':
                     raise SqlmapUserQuitException
             else:
                 raise
+
+        except SqlmapSkipTargetException:
+            pass
 
         except SqlmapUserQuitException:
             raise
@@ -661,7 +689,7 @@ def start():
         except SqlmapSilentQuitException:
             raise
 
-        except SqlmapBaseException, ex:
+        except SqlmapBaseException as ex:
             errMsg = getSafeExString(ex)
 
             if conf.multipleTargets:

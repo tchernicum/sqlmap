@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import os
@@ -20,10 +20,11 @@ class Connector:
     def __init__(self):
         self.connector = None
         self.cursor = None
+        self.hostname = None
 
     def initConnection(self):
-        self.user = conf.dbmsUser
-        self.password = conf.dbmsPass if conf.dbmsPass is not None else ""
+        self.user = conf.dbmsUser or ""
+        self.password = conf.dbmsPass or ""
         self.hostname = conf.hostname
         self.port = conf.port
         self.db = conf.dbmsDb
@@ -34,9 +35,10 @@ class Connector:
         logger.info(infoMsg)
 
     def closed(self):
-        infoMsg = "connection to %s server %s" % (conf.dbms, self.hostname)
-        infoMsg += ":%d closed" % self.port
-        logger.info(infoMsg)
+        if self.hostname:
+            infoMsg = "connection to %s server %s" % (conf.dbms, self.hostname)
+            infoMsg += ":%d closed" % self.port
+            logger.info(infoMsg)
 
         self.connector = None
         self.cursor = None
@@ -50,8 +52,8 @@ class Connector:
                 self.cursor.close()
             if self.connector:
                 self.connector.close()
-        except Exception, msg:
-            logger.debug(msg)
+        except Exception as ex:
+            logger.debug(ex)
         finally:
             self.closed()
 

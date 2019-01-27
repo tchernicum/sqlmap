@@ -80,7 +80,7 @@ def main(src, dst):
         cmd = ''
 
         # Wait for incoming replies
-        if sock in select.select([ sock ], [], [])[0]:
+        if sock in select.select([sock], [], [])[0]:
             buff = sock.recv(4096)
 
             if 0 == len(buff):
@@ -125,8 +125,12 @@ def main(src, dst):
                 # Have the IP packet contain the ICMP packet (along with its payload)
                 ip.contains(icmp)
 
-                # Send it to the target host
-                sock.sendto(ip.get_packet(), (dst, 0))
+                try:
+                    # Send it to the target host
+                    sock.sendto(ip.get_packet(), (dst, 0))
+                except socket.error as ex:
+                    sys.stderr.write("'%s'\n" % ex)
+                    sys.stderr.flush()
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:

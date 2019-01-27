@@ -139,7 +139,7 @@ Jim Forster, <jimforster(at)goldenwest.com>
 * for reporting a bug
 
 Rong-En Fan, <rafan(at)freebsd.org>
-* for commiting the sqlmap 0.5 port to the official FreeBSD project repository
+* for committing the sqlmap 0.5 port to the official FreeBSD project repository
 
 Giorgio Fedon, <giorgio.fedon(at)gmail.com>
 * for suggesting a speed improvement for bisection algorithm
@@ -562,8 +562,11 @@ Kazim Bugra Tombul, <mhackmail(at)gmail.com>
 * for reporting a minor bug
 
 Efrain Torres, <et(at)metasploit.com>
-* for helping out to improve the Metasploit Framework sqlmap auxiliary module and for commiting it on the Metasploit official subversion repository
+* for helping out to improve the Metasploit Framework sqlmap auxiliary module and for committing it on the Metasploit official subversion repository
 * for his great Metasploit WMAP Framework
+
+Jennifer Torres, <jtorresf42(at)gmail.com>
+* for contributing a tamper script luanginx.py
 
 Sandro Tosi, <matrixhasu(at)gmail.com>
 * for helping to create sqlmap Debian package correctly
@@ -597,6 +600,7 @@ Carlos Gabriel Vergara, <carlosgabrielvergara(at)gmail.com>
 
 Patrick Webster, <patrick(at)aushack.com>
 * for suggesting an enhancement
+* for donating to sqlmap development (from OSI.Security)
 
 Ed Williams, <ed.williams(at)ngssecure.com>
 * for suggesting a minor enhancement

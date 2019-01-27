@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
-
 
 from lib.core.common import Backend
 from lib.core.common import Format
@@ -64,12 +63,12 @@ class Fingerprint(GenericFingerprint):
             value += DBMS.DB2
             return value
 
-        actVer      = Format.getDbms()
-        blank       = " " * 15
-        value      += "active fingerprint: %s" % actVer
+        actVer = Format.getDbms()
+        blank = " " * 15
+        value += "active fingerprint: %s" % actVer
 
         if kb.bannerFp:
-            banVer = kb.bannerFp["dbmsVersion"] if 'dbmsVersion' in kb.bannerFp else None
+            banVer = kb.bannerFp.get("dbmsVersion")
             banVer = Format.getDbms([banVer])
             value += "\n%sbanner parsing fingerprint: %s" % (blank, banVer)
 
@@ -81,7 +80,7 @@ class Fingerprint(GenericFingerprint):
         return value
 
     def checkDbms(self):
-        if not conf.extensiveFp and (Backend.isDbmsWithin(DB2_ALIASES) or (conf.dbms or "").lower() in DB2_ALIASES):
+        if not conf.extensiveFp and Backend.isDbmsWithin(DB2_ALIASES):
             setDbms(DBMS.DB2)
 
             return True
@@ -127,12 +126,14 @@ class Fingerprint(GenericFingerprint):
         infoMsg = "the back-end DBMS operating system is %s" % Backend.getOs()
 
         if result:
-            versions = { "2003": ("5.2", (2, 1)),
+            versions = {
+                "2003": ("5.2", (2, 1)),
                 "2008": ("7.0", (1,)),
                 "2000": ("5.0", (4, 3, 2, 1)),
                 "7": ("6.1", (1, 0)),
                 "XP": ("5.1", (2, 1)),
-                "NT": ("4.0", (6, 5, 4, 3, 2, 1)) }
+                "NT": ("4.0", (6, 5, 4, 3, 2, 1))
+            }
 
             # Get back-end DBMS underlying operating system version
             for version, data in versions.items():

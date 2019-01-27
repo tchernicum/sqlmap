@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import re
@@ -49,7 +49,7 @@ def _comparison(page, headers, code, getRatioValue, pageLength):
     threadData = getCurrentThreadData()
 
     if kb.testMode:
-        threadData.lastComparisonHeaders = listToStrValue([_ for _ in headers.headers if not _.startswith("%s:" % URI_HTTP_HEADER)]) if headers else ""
+        threadData.lastComparisonHeaders = listToStrValue(_ for _ in headers.headers if not _.startswith("%s:" % URI_HTTP_HEADER)) if headers else ""
         threadData.lastComparisonPage = page
         threadData.lastComparisonCode = code
 
@@ -57,7 +57,7 @@ def _comparison(page, headers, code, getRatioValue, pageLength):
         return None
 
     if any((conf.string, conf.notString, conf.regexp)):
-        rawResponse = "%s%s" % (listToStrValue([_ for _ in headers.headers if not _.startswith("%s:" % URI_HTTP_HEADER)]) if headers else "", page)
+        rawResponse = "%s%s" % (listToStrValue(_ for _ in headers.headers if not _.startswith("%s:" % URI_HTTP_HEADER)) if headers else "", page)
 
         # String to match in page when the query is True and/or valid
         if conf.string:
@@ -106,16 +106,21 @@ def _comparison(page, headers, code, getRatioValue, pageLength):
         # Preventing "Unicode equal comparison failed to convert both arguments to Unicode"
         # (e.g. if one page is PDF and the other is HTML)
         if isinstance(seqMatcher.a, str) and isinstance(page, unicode):
-            page = page.encode(kb.pageEncoding or DEFAULT_PAGE_ENCODING, 'ignore')
+            page = page.encode(kb.pageEncoding or DEFAULT_PAGE_ENCODING, "ignore")
         elif isinstance(seqMatcher.a, unicode) and isinstance(page, str):
-            seqMatcher.a = seqMatcher.a.encode(kb.pageEncoding or DEFAULT_PAGE_ENCODING, 'ignore')
+            seqMatcher.a = seqMatcher.a.encode(kb.pageEncoding or DEFAULT_PAGE_ENCODING, "ignore")
 
-        if seqMatcher.a and page and seqMatcher.a == page:
-            ratio = 1
+        if any(_ is None for _ in (page, seqMatcher.a)):
+            return None
+        elif seqMatcher.a and page and seqMatcher.a == page:
+            ratio = 1.
         elif kb.skipSeqMatcher or seqMatcher.a and page and any(len(_) > MAX_DIFFLIB_SEQUENCE_LENGTH for _ in (seqMatcher.a, page)):
-            ratio = 1.0 * len(seqMatcher.a) / len(page)
-            if ratio > 1:
-                ratio = 1. / ratio
+            if not page or not seqMatcher.a:
+                return float(seqMatcher.a == page)
+            else:
+                ratio = 1. * len(seqMatcher.a) / len(page)
+                if ratio > 1:
+                    ratio = 1. / ratio
         else:
             seq1, seq2 = None, None
 
@@ -132,10 +137,14 @@ def _comparison(page, headers, code, getRatioValue, pageLength):
             seq1 = seq1.replace(REFLECTED_VALUE_MARKER, "")
             seq2 = seq2.replace(REFLECTED_VALUE_MARKER, "")
 
+            if kb.heavilyDynamic:
+                seq1 = seq1.split("\n")
+                seq2 = seq2.split("\n")
+
             seqMatcher.set_seq1(seq1)
             seqMatcher.set_seq2(seq2)
 
-            ratio = round(seqMatcher.quick_ratio(), 3)
+            ratio = round(seqMatcher.quick_ratio() if not kb.heavilyDynamic else seqMatcher.ratio(), 3)
 
     # If the url is stable and we did not set yet the match ratio and the
     # current injected value changes the url page content
@@ -143,6 +152,9 @@ def _comparison(page, headers, code, getRatioValue, pageLength):
         if ratio >= LOWER_RATIO_BOUND and ratio <= UPPER_RATIO_BOUND:
             kb.matchRatio = ratio
             logger.debug("setting match ratio for current parameter to %.3f" % kb.matchRatio)
+
+    if kb.testMode:
+        threadData.lastComparisonRatio = ratio
 
     # If it has been requested to return the ratio and not a comparison
     # response

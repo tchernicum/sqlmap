@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 from lib.core.exception import SqlmapUnsupportedFeatureException
@@ -13,6 +13,6 @@ class Connector(GenericConnector):
         GenericConnector.__init__(self)
 
     def connect(self):
-        errMsg = "on SAP MaxDB it is not possible to establish a "
+        errMsg = "on SAP MaxDB it is not (currently) possible to establish a "
         errMsg += "direct connection"
         raise SqlmapUnsupportedFeatureException(errMsg)

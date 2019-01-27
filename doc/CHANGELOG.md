@@ -3,7 +3,7 @@
 * Implemented support for automatic decoding of page content through detected charset.
 * Implemented mechanism for proper data dumping on DBMSes not supporting `LIMIT/OFFSET` like mechanism(s) (e.g. Microsoft SQL Server, Sybase, etc.).
 * Major improvements to program stabilization based on user reports.
-* Added new tampering scripts avoiding popular WAF/IPS/IDS mechanisms.
+* Added new tampering scripts avoiding popular WAF/IPS mechanisms.
 * Fixed major bug with DNS leaking in Tor mode.
 * Added wordlist compilation made of the most popular cracking dictionaries.
 * Implemented multi-processor hash cracking routine(s).
@@ -23,7 +23,7 @@
 * Added option `--csv-del` for manually setting delimiting character used in CSV output.
 * Added switch `--hex` for using DBMS hex conversion function(s) for data retrieval.
 * Added switch `--smart` for conducting through tests only in case of positive heuristic(s).
-* Added switch `--check-waf` for checking of existence of WAF/IPS/IDS protection.
+* Added switch `--check-waf` for checking of existence of WAF/IPS protection.
 * Added switch `--schema` to enumerate DBMS schema: shows all columns of all databases' tables.
 * Added switch `--count` to count the number of entries for a specific table or all database(s) tables.
 * Major improvements to switches `--tables` and `--columns`.
@@ -55,7 +55,7 @@
 * Added option `--host` to set the HTTP Host header value.
 * Added switch `--hostname` to turn on retrieval of DBMS server hostname.
 * Added switch `--hpp` to turn on the usage of HTTP parameter pollution WAF bypass method.
-* Added switch `--identify-waf` for turning on the thorough testing of WAF/IPS/IDS protection.
+* Added switch `--identify-waf` for turning on the thorough testing of WAF/IPS protection.
 * Added switch `--ignore-401` to ignore HTTP Error Code 401 (Unauthorized).
 * Added switch `--invalid-bignum` for usage of big numbers while invalidating values.
 * Added switch `--invalid-logical` for usage of logical operations while invalidating values.
@@ -78,12 +78,12 @@
 * Added option `--skip` to skip testing of given parameter(s).
 * Added switch `--skip-static` to skip testing parameters that not appear to be dynamic.
 * Added switch `--skip-urlencode` to skip URL encoding of payload data.
-* Added switch `--skip-waf` to skip heuristic detection of WAF/IPS/IDS protection.
+* Added switch `--skip-waf` to skip heuristic detection of WAF/IPS protection.
 * Added switch `--smart` to conduct thorough tests only if positive heuristic(s).
 * Added option `--sql-file` for setting file(s) holding SQL statements to be executed (in case of stacked SQLi).
 * Added switch `--sqlmap-shell` to turn on interactive sqlmap shell prompt.
 * Added option `--test-filter` for test filtration by payloads and/or titles (e.g. `ROW`).
-* Added option `--test-skip` for skiping tests by payloads and/or titles (e.g. `BENCHMARK`).
+* Added option `--test-skip` for skipping tests by payloads and/or titles (e.g. `BENCHMARK`).
 * Added switch `--titles` to turn on comparison of pages based only on their titles.
 * Added option `--tor-port` to explicitly set Tor proxy port.
 * Added option `--tor-type` to set Tor proxy type (`HTTP` (default), `SOCKS4` or `SOCKS5`).
@@ -149,7 +149,7 @@
 * Major bugs fixed.
 * Cleanup of UDF source code repository, https://svn.sqlmap.org/sqlmap/trunk/sqlmap/extra/udfhack.
 * Major code cleanup.
-* Added simple file encryption/compression utility, extra/cloak/cloak.py, used by sqlmap to decrypt on the fly Churrasco, UPX executable and web shells consequently reducing drastically the number of anti-virus softwares that mistakenly mark sqlmap as a malware.
+* Added simple file encryption/compression utility, extra/cloak/cloak.py, used by sqlmap to decrypt on the fly Churrasco, UPX executable and web shells consequently reducing drastically the number of anti-virus software that mistakenly mark sqlmap as a malware.
 * Updated user's manual.
 * Created several demo videos, hosted on YouTube (http://www.youtube.com/user/inquisb) and linked from http://sqlmap.org/demo.html.
 
@@ -302,7 +302,7 @@
 * Added support to extract database users password hash on Microsoft SQL Server;
 * Added a fuzzer function with the aim to parse HTML page looking for standard database error messages consequently improving database fingerprinting;
 * Added support for SQL injection on HTTP Cookie and User-Agent headers;
-* Reviewed HTTP request library (lib/request.py) to support the extended inband SQL injection functionality. Splitted getValue() into getInband() and getBlind();
+* Reviewed HTTP request library (lib/request.py) to support the extended inband SQL injection functionality. Split getValue() into getInband() and getBlind();
 * Major enhancements in common library and added checkForBrackets() method to check if the bracket(s) are needed to perform a UNION query SQL injection attack;
 * Implemented `--dump-all` functionality to dump entire DBMS data from all databases tables;
 * Added support to exclude DBMS system databases' when enumeration tables and dumping their entries (`--exclude-sysdbs`);
@@ -335,7 +335,7 @@
 * Added inband SQL injection (UNION query) support (`--union-use`);
 * Complete code refactoring, a lot of minor and some major fixes in libraries, many minor improvements;
 * Reviewed the directory tree structure;
-* Splitted lib/common.py: inband injection functionalities now are moved to lib/union.py;
+* Split lib/common.py: inband injection functionalities now are moved to lib/union.py;
 * Updated documentation files.
 
 # Version 0.3 (2007-01-20)

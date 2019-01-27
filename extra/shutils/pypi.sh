@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ ! -f ~/.pypirc ]; then
+    echo "File ~/.pypirc is missing"
+    exit 1
+fi
+
 declare -x SCRIPTPATH="${0}"
 SETTINGS="${SCRIPTPATH%/*}/../../lib/core/settings.py"
 VERSION=$(cat $SETTINGS | grep -E "^VERSION =" | cut -d '"' -f 2 | cut -d '.' -f 1-3)
@@ -11,8 +16,8 @@ cat > $TMP_DIR/setup.py << EOF
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 from setuptools import setup, find_packages
@@ -20,10 +25,16 @@ from setuptools import setup, find_packages
 setup(
     name='sqlmap',
     version='$VERSION',
-    description="Automatic SQL injection and database takeover tool",
+    description='Automatic SQL injection and database takeover tool',
+    long_description='sqlmap is an open source penetration testing tool that automates the process of detecting and exploiting SQL injection flaws and taking over of database servers. It comes with a powerful detection engine, many niche features for the ultimate penetration tester and a broad range of switches lasting from database fingerprinting, over data fetching from the database, to accessing the underlying file system and executing commands on the operating system via out-of-band connections.',
     author='Bernardo Damele Assumpcao Guimaraes, Miroslav Stampar',
     author_email='bernardo@sqlmap.org, miroslav@sqlmap.org',
-    url='https://sqlmap.org',
+    url='http://sqlmap.org',
+    project_urls={
+        'Documentation': 'https://github.com/sqlmapproject/sqlmap/wiki',
+        'Source': 'https://github.com/sqlmapproject/sqlmap/',
+        'Tracker': 'https://github.com/sqlmapproject/sqlmap/issues',
+    },
     download_url='https://github.com/sqlmapproject/sqlmap/archive/$VERSION.zip',
     license='GNU General Public License v2 (GPLv2)',
     packages=find_packages(),
@@ -55,8 +66,8 @@ cat > sqlmap/__init__.py << EOF
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import os
@@ -132,7 +143,7 @@ You can find a sample run `here <https://asciinema.org/a/46601>`__. To
 get an overview of sqlmap capabilities, list of supported features and
 description of all options and switches, along with examples, you are
 advised to consult the `user's
-manual <https://github.com/sqlmapproject/sqlmap/wiki>`__.
+manual <https://github.com/sqlmapproject/sqlmap/wiki/Usage>`__.
 
 Links
 -----
@@ -147,12 +158,6 @@ Links
 -  User's manual: https://github.com/sqlmapproject/sqlmap/wiki
 -  Frequently Asked Questions (FAQ):
    https://github.com/sqlmapproject/sqlmap/wiki/FAQ
--  Mailing list subscription:
-   https://lists.sourceforge.net/lists/listinfo/sqlmap-users
--  Mailing list RSS feed:
-   http://rss.gmane.org/messages/complete/gmane.comp.security.sqlmap
--  Mailing list archive:
-   http://news.gmane.org/gmane.comp.security.sqlmap
 -  Twitter: [@sqlmap](https://twitter.com/sqlmap)
 -  Demos: http://www.youtube.com/user/inquisb/videos
 -  Screenshots: https://github.com/sqlmapproject/sqlmap/wiki/Screenshots
@@ -162,7 +167,7 @@ Links
 .. |Python 2.6|2.7| image:: https://img.shields.io/badge/python-2.6|2.7-yellow.svg
    :target: https://www.python.org/
 .. |License| image:: https://img.shields.io/badge/license-GPLv2-red.svg
-   :target: https://raw.githubusercontent.com/sqlmapproject/sqlmap/master/doc/COPYING
+   :target: https://raw.githubusercontent.com/sqlmapproject/sqlmap/master/LICENSE
 .. |Twitter| image:: https://img.shields.io/badge/twitter-@sqlmap-blue.svg
    :target: https://twitter.com/sqlmap
 

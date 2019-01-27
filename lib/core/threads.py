@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
+
+from __future__ import print_function
 
 import difflib
 import random
-import thread
 import threading
 import time
 import traceback
@@ -46,6 +47,7 @@ class _ThreadData(threading.local):
         self.lastComparisonPage = None
         self.lastComparisonHeaders = None
         self.lastComparisonCode = None
+        self.lastComparisonRatio = None
         self.lastErrorPage = None
         self.lastHTTPError = None
         self.lastRedirectMsg = None
@@ -64,10 +66,7 @@ class _ThreadData(threading.local):
 
 ThreadData = _ThreadData()
 
-def getCurrentThreadUID():
-    return hash(threading.currentThread())
-
-def readInput(message, default=None):
+def readInput(message, default=None, checkBatch=True, boolean=False):
     # It will be overwritten by original from lib.core.common
     pass
 
@@ -87,16 +86,19 @@ def getCurrentThreadName():
 
     return threading.current_thread().getName()
 
-def exceptionHandledFunction(threadFunction):
+def exceptionHandledFunction(threadFunction, silent=False):
     try:
         threadFunction()
     except KeyboardInterrupt:
         kb.threadContinue = False
         kb.threadException = True
         raise
-    except Exception, ex:
-        # thread is just going to be silently killed
-        logger.error("thread %s: %s" % (threading.currentThread().getName(), ex.message))
+    except Exception as ex:
+        if not silent and kb.get("threadContinue"):
+            logger.error("thread %s: %s" % (threading.currentThread().getName(), ex.message))
+
+            if conf.get("verbose") > 1:
+                traceback.print_exc()
 
 def setDaemon(thread):
     # Reference: http://stackoverflow.com/questions/190010/daemon-threads-explanation
@@ -108,7 +110,6 @@ def setDaemon(thread):
 def runThreads(numThreads, threadFunction, cleanupFunction=None, forwardException=True, threadChoice=False, startThreadMsg=True):
     threads = []
 
-    kb.multiThreadMode = True
     kb.threadContinue = True
     kb.threadException = False
 
@@ -150,7 +151,7 @@ def runThreads(numThreads, threadFunction, cleanupFunction=None, forwardExceptio
 
             try:
                 thread.start()
-            except thread.error, ex:
+            except Exception as ex:
                 errMsg = "error occurred while starting new thread ('%s')" % ex.message
                 logger.critical(errMsg)
                 break
@@ -166,8 +167,9 @@ def runThreads(numThreads, threadFunction, cleanupFunction=None, forwardExceptio
                     alive = True
                     time.sleep(0.1)
 
-    except (KeyboardInterrupt, SqlmapUserQuitException), ex:
-        print
+    except (KeyboardInterrupt, SqlmapUserQuitException) as ex:
+        print()
+        kb.prependFlag = False
         kb.threadContinue = False
         kb.threadException = True
 
@@ -183,22 +185,24 @@ def runThreads(numThreads, threadFunction, cleanupFunction=None, forwardExceptio
         if forwardException:
             raise
 
-    except (SqlmapConnectionException, SqlmapValueException), ex:
-        print
+    except (SqlmapConnectionException, SqlmapValueException) as ex:
+        print()
         kb.threadException = True
         logger.error("thread %s: %s" % (threading.currentThread().getName(), ex.message))
+
+        if conf.get("verbose") > 1:
+            traceback.print_exc()
 
     except:
         from lib.core.common import unhandledExceptionMessage
 
-        print
+        print()
         kb.threadException = True
         errMsg = unhandledExceptionMessage()
         logger.error("thread %s: %s" % (threading.currentThread().getName(), errMsg))
         traceback.print_exc()
 
     finally:
-        kb.multiThreadMode = False
         kb.bruteMode = False
         kb.threadContinue = True
         kb.threadException = False
@@ -207,7 +211,7 @@ def runThreads(numThreads, threadFunction, cleanupFunction=None, forwardExceptio
             if lock.locked():
                 try:
                     lock.release()
-                except thread.error:
+                except:
                     pass
 
         if conf.get("hashDB"):

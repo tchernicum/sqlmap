@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
+
+from __future__ import print_function
 
 import os
 import re
@@ -94,7 +96,7 @@ class DNSServer(object):
 
         with self._lock:
             for _ in self._requests:
-                if prefix is None and suffix is None or re.search("%s\..+\.%s" % (prefix, suffix), _, re.I):
+                if prefix is None and suffix is None or re.search(r"%s\..+\.%s" % (prefix, suffix), _, re.I):
                     retVal = _
                     self._requests.remove(_)
                     break
@@ -145,13 +147,13 @@ if __name__ == "__main__":
                 if _ is None:
                     break
                 else:
-                    print "[i] %s" % _
+                    print("[i] %s" % _)
 
             time.sleep(1)
 
-    except socket.error, ex:
+    except socket.error as ex:
         if 'Permission' in str(ex):
-            print "[x] Please run with sudo/Administrator privileges"
+            print("[x] Please run with sudo/Administrator privileges")
         else:
             raise
     except KeyboardInterrupt:

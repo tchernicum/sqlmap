@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import urllib
@@ -32,7 +32,7 @@ class HTTPRangeHandler(urllib2.BaseHandler):
         urllib2.install_opener(opener)
 
         # create Request and set Range header
-        req = urllib2.Request('http://www.python.org/')
+        req = urllib2.Request('https://www.python.org/')
         req.header['Range'] = 'bytes=30-50'
         f = urllib2.urlopen(req)
     """

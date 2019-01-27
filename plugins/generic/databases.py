@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 from lib.core.agent import agent
@@ -23,6 +23,7 @@ from lib.core.common import pushValue
 from lib.core.common import randomStr
 from lib.core.common import readInput
 from lib.core.common import safeSQLIdentificatorNaming
+from lib.core.common import singleTimeLogMessage
 from lib.core.common import singleTimeWarnMessage
 from lib.core.common import unArrayizeValue
 from lib.core.common import unsafeSQLIdentificatorNaming
@@ -31,6 +32,7 @@ from lib.core.data import kb
 from lib.core.data import logger
 from lib.core.data import paths
 from lib.core.data import queries
+from lib.core.decorators import stackedmethod
 from lib.core.dicts import FIREBIRD_TYPES
 from lib.core.dicts import INFORMIX_TYPES
 from lib.core.enums import CHARSET_TYPE
@@ -42,9 +44,9 @@ from lib.core.exception import SqlmapNoneDataException
 from lib.core.exception import SqlmapUserQuitException
 from lib.core.settings import CURRENT_DB
 from lib.request import inject
-from lib.techniques.brute.use import columnExists
-from lib.techniques.brute.use import tableExists
 from lib.techniques.union.use import unionUse
+from lib.utils.brute import columnExists
+from lib.utils.brute import tableExists
 
 class Databases:
     """
@@ -177,7 +179,7 @@ class Databases:
             kb.data.cachedDbs.sort()
 
         if kb.data.cachedDbs:
-            kb.data.cachedDbs = filter(None, list(set(flattenValue(kb.data.cachedDbs))))
+            kb.data.cachedDbs = [_ for _ in set(flattenValue(kb.data.cachedDbs)) if _]
 
         return kb.data.cachedDbs
 
@@ -215,7 +217,7 @@ class Databases:
             conf.db = conf.db.upper()
 
         if conf.db:
-            dbs = conf.db.split(",")
+            dbs = conf.db.split(',')
         else:
             dbs = self.getDbs()
 
@@ -243,11 +245,11 @@ class Databases:
                 return kb.data.cachedTables
 
             message = "do you want to use common table existence check? %s " % ("[Y/n/q]" if Backend.getIdentifiedDbms() in (DBMS.ACCESS,) else "[y/N/q]")
-            test = readInput(message, default="Y" if "Y" in message else "N")
+            choice = readInput(message, default='Y' if 'Y' in message else 'N').upper()
 
-            if test[0] in ("n", "N"):
+            if choice == 'N':
                 return
-            elif test[0] in ("q", "Q"):
+            elif choice == 'Q':
                 raise SqlmapUserQuitException
             else:
                 return tableExists(paths.COMMON_TABLES)
@@ -259,27 +261,31 @@ class Databases:
         rootQuery = queries[Backend.getIdentifiedDbms()].tables
 
         if any(isTechniqueAvailable(_) for _ in (PAYLOAD.TECHNIQUE.UNION, PAYLOAD.TECHNIQUE.ERROR, PAYLOAD.TECHNIQUE.QUERY)) or conf.direct:
-            query = rootQuery.inband.query
-            condition = rootQuery.inband.condition if 'condition' in rootQuery.inband else None
+            values = []
 
-            if condition:
-                if not Backend.isDbms(DBMS.SQLITE):
-                    query += " WHERE %s" % condition
+            for query, condition in ((rootQuery.inband.query, getattr(rootQuery.inband, "condition", None)), (getattr(rootQuery.inband, "query2", None), getattr(rootQuery.inband, "condition2", None))):
+                if not isNoneValue(values) or not query:
+                    break
 
-                    if conf.excludeSysDbs:
-                        infoMsg = "skipping system database%s '%s'" % ("s" if len(self.excludeDbsList) > 1 else "", ", ".join(unsafeSQLIdentificatorNaming(db) for db in self.excludeDbsList))
-                        logger.info(infoMsg)
-                        query += " IN (%s)" % ",".join("'%s'" % unsafeSQLIdentificatorNaming(db) for db in sorted(dbs) if db not in self.excludeDbsList)
-                    else:
-                        query += " IN (%s)" % ",".join("'%s'" % unsafeSQLIdentificatorNaming(db) for db in sorted(dbs))
+                if condition:
+                    if not Backend.isDbms(DBMS.SQLITE):
+                        query += " WHERE %s" % condition
 
-                if len(dbs) < 2 and ("%s," % condition) in query:
-                    query = query.replace("%s," % condition, "", 1)
+                        if conf.excludeSysDbs:
+                            infoMsg = "skipping system database%s '%s'" % ("s" if len(self.excludeDbsList) > 1 else "", ", ".join(unsafeSQLIdentificatorNaming(db) for db in self.excludeDbsList))
+                            logger.info(infoMsg)
+                            query += " IN (%s)" % ','.join("'%s'" % unsafeSQLIdentificatorNaming(db) for db in sorted(dbs) if db not in self.excludeDbsList)
+                        else:
+                            query += " IN (%s)" % ','.join("'%s'" % unsafeSQLIdentificatorNaming(db) for db in sorted(dbs))
 
-            values = inject.getValue(query, blind=False, time=False)
+                    if len(dbs) < 2 and ("%s," % condition) in query:
+                        query = query.replace("%s," % condition, "", 1)
+
+                if query:
+                    values = inject.getValue(query, blind=False, time=False)
 
             if not isNoneValue(values):
-                values = filter(None, arrayizeValue(values))
+                values = [_ for _ in arrayizeValue(values) if _]
 
                 if len(values) > 0 and not isListLike(values[0]):
                     values = [(dbs[0], _) for _ in values]
@@ -287,6 +293,24 @@ class Databases:
                 for db, table in filterPairValues(values):
                     db = safeSQLIdentificatorNaming(db)
                     table = safeSQLIdentificatorNaming(unArrayizeValue(table), True)
+
+                    if conf.getComments:
+                        _ = queries[Backend.getIdentifiedDbms()].table_comment
+                        if hasattr(_, "query"):
+                            if Backend.getIdentifiedDbms() in (DBMS.ORACLE, DBMS.DB2):
+                                query = _.query % (unsafeSQLIdentificatorNaming(db.upper()), unsafeSQLIdentificatorNaming(table.upper()))
+                            else:
+                                query = _.query % (unsafeSQLIdentificatorNaming(db), unsafeSQLIdentificatorNaming(table))
+
+                            comment = unArrayizeValue(inject.getValue(query, blind=False, time=False))
+                            if not isNoneValue(comment):
+                                infoMsg = "retrieved comment '%s' for table '%s' " % (comment, unsafeSQLIdentificatorNaming(table))
+                                infoMsg += "in database '%s'" % unsafeSQLIdentificatorNaming(db)
+                                logger.info(infoMsg)
+                        else:
+                            warnMsg = "on %s it is not " % Backend.getIdentifiedDbms()
+                            warnMsg += "possible to get column comments"
+                            singleTimeWarnMessage(warnMsg)
 
                     if db not in kb.data.cachedTables:
                         kb.data.cachedTables[db] = [table]
@@ -298,7 +322,11 @@ class Databases:
                 if conf.excludeSysDbs and db in self.excludeDbsList:
                     infoMsg = "skipping system database '%s'" % unsafeSQLIdentificatorNaming(db)
                     logger.info(infoMsg)
+                    continue
 
+                if conf.exclude and db in conf.exclude.split(','):
+                    infoMsg = "skipping database '%s'" % unsafeSQLIdentificatorNaming(db)
+                    singleTimeLogMessage(infoMsg)
                     continue
 
                 infoMsg = "fetching number of tables for "
@@ -347,6 +375,24 @@ class Databases:
                         table = safeSQLIdentificatorNaming(table, True)
                         tables.append(table)
 
+                        if conf.getComments:
+                            _ = queries[Backend.getIdentifiedDbms()].table_comment
+                            if hasattr(_, "query"):
+                                if Backend.getIdentifiedDbms() in (DBMS.ORACLE, DBMS.DB2):
+                                    query = _.query % (unsafeSQLIdentificatorNaming(db.upper()), unsafeSQLIdentificatorNaming(table.upper()))
+                                else:
+                                    query = _.query % (unsafeSQLIdentificatorNaming(db), unsafeSQLIdentificatorNaming(table))
+
+                                comment = unArrayizeValue(inject.getValue(query, union=False, error=False))
+                                if not isNoneValue(comment):
+                                    infoMsg = "retrieved comment '%s' for table '%s' " % (comment, unsafeSQLIdentificatorNaming(table))
+                                    infoMsg += "in database '%s'" % unsafeSQLIdentificatorNaming(db)
+                                    logger.info(infoMsg)
+                            else:
+                                warnMsg = "on %s it is not " % Backend.getIdentifiedDbms()
+                                warnMsg += "possible to get column comments"
+                                singleTimeWarnMessage(warnMsg)
+
                 if tables:
                     kb.data.cachedTables[db] = tables
                 else:
@@ -369,7 +415,7 @@ class Databases:
                 kb.data.cachedTables[db] = sorted(tables) if tables else tables
 
         if kb.data.cachedTables:
-            for db in kb.data.cachedTables.keys():
+            for db in kb.data.cachedTables:
                 kb.data.cachedTables[db] = list(set(kb.data.cachedTables[db]))
 
         return kb.data.cachedTables
@@ -392,10 +438,10 @@ class Databases:
                 raise SqlmapNoneDataException(errMsg)
 
         elif conf.db is not None:
-            if Backend.getIdentifiedDbms() in (DBMS.ORACLE, DBMS.DB2, DBMS.HSQLDB):
+            if Backend.getIdentifiedDbms() in (DBMS.ORACLE, DBMS.DB2, DBMS.HSQLDB, DBMS.H2):
                 conf.db = conf.db.upper()
 
-            if  ',' in conf.db:
+            if ',' in conf.db:
                 errMsg = "only one database name is allowed when enumerating "
                 errMsg += "the tables' columns"
                 raise SqlmapMissingMandatoryOptionException(errMsg)
@@ -410,19 +456,19 @@ class Databases:
         else:
             colList = []
 
-        if conf.excludeCol:
-            colList = [_ for _ in colList if _ not in conf.excludeCol.split(',')]
+        if conf.exclude:
+            colList = [_ for _ in colList if _ not in conf.exclude.split(',')]
 
         for col in colList:
             colList[colList.index(col)] = safeSQLIdentificatorNaming(col)
 
-        colList = filter(None, colList)
+        colList = [_ for _ in colList if _]
 
         if conf.tbl:
-            if Backend.getIdentifiedDbms() in (DBMS.ORACLE, DBMS.DB2, DBMS.HSQLDB):
+            if Backend.getIdentifiedDbms() in (DBMS.ORACLE, DBMS.DB2, DBMS.HSQLDB, DBMS.H2):
                 conf.tbl = conf.tbl.upper()
 
-            tblList = conf.tbl.split(",")
+            tblList = conf.tbl.split(',')
         else:
             self.getTables()
 
@@ -486,11 +532,11 @@ class Databases:
                 return kb.data.cachedColumns
 
             message = "do you want to use common column existence check? %s" % ("[Y/n/q]" if Backend.getIdentifiedDbms() in (DBMS.ACCESS,) else "[y/N/q]")
-            test = readInput(message, default="Y" if "Y" in message else "N")
+            choice = readInput(message, default='Y' if 'Y' in message else 'N').upper()
 
-            if test[0] in ("n", "N"):
+            if choice == 'N':
                 return
-            elif test[0] in ("q", "Q"):
+            elif choice == 'Q':
                 raise SqlmapUserQuitException
             else:
                 return columnExists(paths.COMMON_COLUMNS)
@@ -523,7 +569,7 @@ class Databases:
                     condQueryStr = "%%s%s" % colCondParam
                     condQuery = " AND (%s)" % " OR ".join(condQueryStr % (condition, unsafeSQLIdentificatorNaming(col)) for col in sorted(colList))
 
-                if Backend.getIdentifiedDbms() in (DBMS.MYSQL, DBMS.PGSQL, DBMS.HSQLDB):
+                if Backend.getIdentifiedDbms() in (DBMS.MYSQL, DBMS.PGSQL, DBMS.HSQLDB, DBMS.H2):
                     query = rootQuery.inband.query % (unsafeSQLIdentificatorNaming(tbl), unsafeSQLIdentificatorNaming(conf.db))
                     query += condQuery
                 elif Backend.getIdentifiedDbms() in (DBMS.ORACLE, DBMS.DB2):
@@ -534,7 +580,7 @@ class Databases:
                                                       conf.db, conf.db, conf.db, unsafeSQLIdentificatorNaming(tbl).split(".")[-1])
                     query += condQuery.replace("[DB]", conf.db)
                 elif Backend.getIdentifiedDbms() in (DBMS.SQLITE, DBMS.FIREBIRD):
-                    query = rootQuery.inband.query % tbl
+                    query = rootQuery.inband.query % unsafeSQLIdentificatorNaming(tbl)
 
                 if dumpMode and colList:
                     values = [(_,) for _ in colList]
@@ -559,12 +605,14 @@ class Databases:
 
                     if values is None:
                         values = inject.getValue(query, blind=False, time=False)
+                        if values and isinstance(values[0], basestring):
+                            values = [values]
 
                 if Backend.isDbms(DBMS.MSSQL) and isNoneValue(values):
                     index, values = 1, []
 
                     while True:
-                        query = rootQuery.inband.query2 % (conf.db, tbl, index)
+                        query = rootQuery.inband.query2 % (conf.db, unsafeSQLIdentificatorNaming(tbl), index)
                         value = unArrayizeValue(inject.getValue(query, blind=False, time=False))
 
                         if isNoneValue(value) or value == " ":
@@ -649,7 +697,7 @@ class Databases:
                     condQueryStr = "%%s%s" % colCondParam
                     condQuery = " AND (%s)" % " OR ".join(condQueryStr % (condition, unsafeSQLIdentificatorNaming(col)) for col in sorted(colList))
 
-                if Backend.getIdentifiedDbms() in (DBMS.MYSQL, DBMS.PGSQL, DBMS.HSQLDB):
+                if Backend.getIdentifiedDbms() in (DBMS.MYSQL, DBMS.PGSQL, DBMS.HSQLDB, DBMS.H2):
                     query = rootQuery.blind.count % (unsafeSQLIdentificatorNaming(tbl), unsafeSQLIdentificatorNaming(conf.db))
                     query += condQuery
 
@@ -658,20 +706,19 @@ class Databases:
                     query += condQuery
 
                 elif Backend.isDbms(DBMS.MSSQL):
-                    query = rootQuery.blind.count % (conf.db, conf.db, \
-                        unsafeSQLIdentificatorNaming(tbl).split(".")[-1])
+                    query = rootQuery.blind.count % (conf.db, conf.db, unsafeSQLIdentificatorNaming(tbl).split(".")[-1])
                     query += condQuery.replace("[DB]", conf.db)
 
                 elif Backend.isDbms(DBMS.FIREBIRD):
-                    query = rootQuery.blind.count % (tbl)
+                    query = rootQuery.blind.count % unsafeSQLIdentificatorNaming(tbl)
                     query += condQuery
 
                 elif Backend.isDbms(DBMS.INFORMIX):
-                    query = rootQuery.blind.count % (conf.db, conf.db, conf.db, conf.db, conf.db, tbl)
+                    query = rootQuery.blind.count % (conf.db, conf.db, conf.db, conf.db, conf.db, unsafeSQLIdentificatorNaming(tbl))
                     query += condQuery
 
                 elif Backend.isDbms(DBMS.SQLITE):
-                    query = rootQuery.blind.query % tbl
+                    query = rootQuery.blind.query % unsafeSQLIdentificatorNaming(tbl)
                     value = unArrayizeValue(inject.getValue(query, union=False, error=False))
                     parseSqliteTableSchema(value)
                     return kb.data.cachedColumns
@@ -694,7 +741,7 @@ class Databases:
                         if Backend.isDbms(DBMS.MSSQL):
                             count, index, values = 0, 1, []
                             while True:
-                                query = rootQuery.blind.query3 % (conf.db, tbl, index)
+                                query = rootQuery.blind.query3 % (conf.db, unsafeSQLIdentificatorNaming(tbl), index)
                                 value = unArrayizeValue(inject.getValue(query, union=False, error=False))
                                 if isNoneValue(value) or value == " ":
                                     break
@@ -714,6 +761,10 @@ class Databases:
                         query = rootQuery.blind.query % (unsafeSQLIdentificatorNaming(tbl), unsafeSQLIdentificatorNaming(conf.db))
                         query += condQuery
                         field = None
+                    elif Backend.isDbms(DBMS.H2):
+                        query = rootQuery.blind.query % (unsafeSQLIdentificatorNaming(tbl), unsafeSQLIdentificatorNaming(conf.db))
+                        query = query.replace(" ORDER BY ", "%s ORDER BY " % condQuery)
+                        field = None
                     elif Backend.getIdentifiedDbms() in (DBMS.ORACLE, DBMS.DB2):
                         query = rootQuery.blind.query % (unsafeSQLIdentificatorNaming(tbl.upper()), unsafeSQLIdentificatorNaming(conf.db.upper()))
                         query += condQuery
@@ -723,11 +774,11 @@ class Databases:
                         query += condQuery.replace("[DB]", conf.db)
                         field = condition.replace("[DB]", conf.db)
                     elif Backend.isDbms(DBMS.FIREBIRD):
-                        query = rootQuery.blind.query % (tbl)
+                        query = rootQuery.blind.query % unsafeSQLIdentificatorNaming(tbl)
                         query += condQuery
                         field = None
                     elif Backend.isDbms(DBMS.INFORMIX):
-                        query = rootQuery.blind.query % (index, conf.db, conf.db, conf.db, conf.db, conf.db, tbl)
+                        query = rootQuery.blind.query % (index, conf.db, conf.db, conf.db, conf.db, conf.db, unsafeSQLIdentificatorNaming(tbl))
                         query += condQuery
                         field = condition
 
@@ -753,17 +804,16 @@ class Databases:
                                 singleTimeWarnMessage(warnMsg)
 
                         if not onlyColNames:
-                            if Backend.getIdentifiedDbms() in (DBMS.MYSQL, DBMS.PGSQL):
+                            if Backend.getIdentifiedDbms() in (DBMS.MYSQL, DBMS.PGSQL, DBMS.HSQLDB, DBMS.H2):
                                 query = rootQuery.blind.query2 % (unsafeSQLIdentificatorNaming(tbl), column, unsafeSQLIdentificatorNaming(conf.db))
                             elif Backend.getIdentifiedDbms() in (DBMS.ORACLE, DBMS.DB2):
                                 query = rootQuery.blind.query2 % (unsafeSQLIdentificatorNaming(tbl.upper()), column, unsafeSQLIdentificatorNaming(conf.db.upper()))
                             elif Backend.isDbms(DBMS.MSSQL):
-                                query = rootQuery.blind.query2 % (conf.db, conf.db, conf.db, conf.db, column, conf.db,
-                                                                conf.db, conf.db, unsafeSQLIdentificatorNaming(tbl).split(".")[-1])
+                                query = rootQuery.blind.query2 % (conf.db, conf.db, conf.db, conf.db, column, conf.db, conf.db, conf.db, unsafeSQLIdentificatorNaming(tbl).split(".")[-1])
                             elif Backend.isDbms(DBMS.FIREBIRD):
-                                query = rootQuery.blind.query2 % (tbl, column)
+                                query = rootQuery.blind.query2 % (unsafeSQLIdentificatorNaming(tbl), column)
                             elif Backend.isDbms(DBMS.INFORMIX):
-                                query = rootQuery.blind.query2 % (conf.db, conf.db, conf.db, conf.db, conf.db, tbl, column)
+                                query = rootQuery.blind.query2 % (conf.db, conf.db, conf.db, conf.db, conf.db, unsafeSQLIdentificatorNaming(tbl), column)
 
                             colType = unArrayizeValue(inject.getValue(query, union=False, error=False))
 
@@ -803,6 +853,7 @@ class Databases:
 
         return kb.data.cachedColumns
 
+    @stackedmethod
     def getSchema(self):
         infoMsg = "enumerating database management system schema"
         logger.info(infoMsg)
@@ -818,10 +869,7 @@ class Databases:
             self.getTables()
 
             infoMsg = "fetched tables: "
-            infoMsg += ", ".join(["%s" % ", ".join("%s%s%s" % (unsafeSQLIdentificatorNaming(db), ".." if \
-                    Backend.isDbms(DBMS.MSSQL) or Backend.isDbms(DBMS.SYBASE) \
-                    else ".", unsafeSQLIdentificatorNaming(t)) for t in tbl) for db, tbl in \
-                    kb.data.cachedTables.items()])
+            infoMsg += ", ".join(["%s" % ", ".join("%s%s%s" % (unsafeSQLIdentificatorNaming(db), ".." if Backend.isDbms(DBMS.MSSQL) or Backend.isDbms(DBMS.SYBASE) else '.', unsafeSQLIdentificatorNaming(_)) for _ in tbl) for db, tbl in kb.data.cachedTables.items()])
             logger.info(infoMsg)
 
             for db, tables in kb.data.cachedTables.items():
@@ -883,7 +931,7 @@ class Databases:
         self.forceDbmsEnum()
 
         if conf.tbl:
-            for table in conf.tbl.split(","):
+            for table in conf.tbl.split(','):
                 self._tableGetCount(conf.db, table)
         else:
             self.getTables()

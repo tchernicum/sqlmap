@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import os
@@ -21,7 +21,7 @@ def dependencies():
 
 def tamper(payload, **kwargs):
     """
-    Encloses each keyword with versioned MySQL comment
+    Encloses each keyword with (MySQL) versioned comment
 
     Requirement:
         * MySQL >= 5.1.13

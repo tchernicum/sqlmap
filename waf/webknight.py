@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import re
@@ -16,9 +16,10 @@ def detect(get_page):
     retval = False
 
     for vector in WAF_ATTACK_VECTORS:
-        _, headers, code = get_page(get=vector)
+        page, headers, code = get_page(get=vector)
         retval = code == 999
         retval |= re.search(r"WebKnight", headers.get(HTTP_HEADER.SERVER, ""), re.I) is not None
+        retval |= any(_ in (page or "") for _ in ("WebKnight Application Firewall Alert", "AQTRONIX WebKnight"))
         if retval:
             break
 

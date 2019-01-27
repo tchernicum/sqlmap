@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import hashlib
@@ -41,7 +41,7 @@ class HashDB(object):
                 threadData.hashDBCursor = connection.cursor()
                 threadData.hashDBCursor.execute("CREATE TABLE IF NOT EXISTS storage (id INTEGER PRIMARY KEY, value TEXT)")
                 connection.commit()
-            except Exception, ex:
+            except Exception as ex:
                 errMsg = "error occurred while opening a session "
                 errMsg += "file '%s' ('%s')" % (self.filepath, getSafeExString(ex))
                 raise SqlmapConnectionException(errMsg)
@@ -81,7 +81,7 @@ class HashDB(object):
                     try:
                         for row in self.cursor.execute("SELECT value FROM storage WHERE id=?", (hash_,)):
                             retVal = row[0]
-                    except sqlite3.OperationalError, ex:
+                    except sqlite3.OperationalError as ex:
                         if any(_ in getSafeExString(ex) for _ in ("locked", "no such table")):
                             warnMsg = "problem occurred while accessing session file '%s' ('%s')" % (self.filepath, getSafeExString(ex))
                             singleTimeWarnMessage(warnMsg)
@@ -89,10 +89,10 @@ class HashDB(object):
                             break
                         else:
                             raise
-                    except sqlite3.DatabaseError, ex:
+                    except sqlite3.DatabaseError as ex:
                         errMsg = "error occurred while accessing session file '%s' ('%s'). " % (self.filepath, getSafeExString(ex))
-                        errMsg += "If the problem persists please rerun with `--flush-session`"
-                        raise SqlmapConnectionException, errMsg
+                        errMsg += "If the problem persists please rerun with '--flush-session'"
+                        raise SqlmapConnectionException(errMsg)
                     else:
                         break
 
@@ -104,7 +104,7 @@ class HashDB(object):
             except:
                 retVal = None
                 warnMsg = "error occurred while unserializing value for session key '%s'. " % key
-                warnMsg += "If the problem persists please rerun with `--flush-session`"
+                warnMsg += "If the problem persists please rerun with '--flush-session'"
                 logger.warn(warnMsg)
 
         return retVal
@@ -141,7 +141,7 @@ class HashDB(object):
                             self.cursor.execute("INSERT INTO storage VALUES (?, ?)", (hash_, value,))
                         except sqlite3.IntegrityError:
                             self.cursor.execute("UPDATE storage SET value=? WHERE id=?", (value, hash_,))
-                    except sqlite3.DatabaseError, ex:
+                    except sqlite3.DatabaseError as ex:
                         if not os.path.exists(self.filepath):
                             debugMsg = "session file '%s' does not exist" % self.filepath
                             logger.debug(debugMsg)

@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
+import time
 import types
 import urllib2
 import urlparse
@@ -15,6 +16,7 @@ from lib.core.data import conf
 from lib.core.data import kb
 from lib.core.data import logger
 from lib.core.common import getHostHeader
+from lib.core.common import getSafeExString
 from lib.core.common import getUnicode
 from lib.core.common import logHTTPTraffic
 from lib.core.common import readInput
@@ -49,18 +51,16 @@ class SmartRedirectHandler(urllib2.HTTPRedirectHandler):
             if kb.redirectChoice is None:
                 msg = "sqlmap got a %d redirect to " % redcode
                 msg += "'%s'. Do you want to follow? [Y/n] " % redurl
-                choice = readInput(msg, default="Y")
 
-                kb.redirectChoice = choice.upper()
+                kb.redirectChoice = REDIRECTION.YES if readInput(msg, default='Y', boolean=True) else REDIRECTION.NO
 
             if kb.redirectChoice == REDIRECTION.YES and method == HTTPMETHOD.POST and kb.resendPostOnRedirect is None:
                 msg = "redirect is a result of a "
                 msg += "POST request. Do you want to "
                 msg += "resend original POST data to a new "
                 msg += "location? [%s] " % ("Y/n" if not kb.originalPage else "y/N")
-                choice = readInput(msg, default=("Y" if not kb.originalPage else "N"))
 
-                kb.resendPostOnRedirect = choice.upper() == 'Y'
+                kb.resendPostOnRedirect = readInput(msg, default=('Y' if not kb.originalPage else 'N'), boolean=True)
 
             if kb.resendPostOnRedirect:
                 self.redirect_request = self._redirect_request
@@ -70,14 +70,15 @@ class SmartRedirectHandler(urllib2.HTTPRedirectHandler):
         return urllib2.Request(newurl, data=req.data, headers=req.headers, origin_req_host=req.get_origin_req_host())
 
     def http_error_302(self, req, fp, code, msg, headers):
+        start = time.time()
         content = None
         redurl = self._get_header_redirect(headers) if not conf.ignoreRedirects else None
 
         try:
             content = fp.read(MAX_CONNECTION_TOTAL_SIZE)
-        except Exception, msg:
+        except Exception as ex:
             dbgMsg = "there was a problem while retrieving "
-            dbgMsg += "redirect response content (%s)" % msg
+            dbgMsg += "redirect response content ('%s')" % getSafeExString(ex)
             logger.debug(dbgMsg)
         finally:
             if content:
@@ -93,18 +94,18 @@ class SmartRedirectHandler(urllib2.HTTPRedirectHandler):
         threadData.lastRedirectMsg = (threadData.lastRequestUID, content)
 
         redirectMsg = "HTTP redirect "
-        redirectMsg += "[#%d] (%d %s):\n" % (threadData.lastRequestUID, code, getUnicode(msg))
+        redirectMsg += "[#%d] (%d %s):\r\n" % (threadData.lastRequestUID, code, getUnicode(msg))
 
         if headers:
-            logHeaders = "\n".join("%s: %s" % (getUnicode(key.capitalize() if isinstance(key, basestring) else key), getUnicode(value)) for (key, value) in headers.items())
+            logHeaders = "\r\n".join("%s: %s" % (getUnicode(key.capitalize() if isinstance(key, basestring) else key), getUnicode(value)) for (key, value) in headers.items())
         else:
             logHeaders = ""
 
         redirectMsg += logHeaders
         if content:
-            redirectMsg += "\n\n%s" % getUnicode(content[:MAX_CONNECTION_CHUNK_SIZE])
+            redirectMsg += "\r\n\r\n%s" % getUnicode(content[:MAX_CONNECTION_CHUNK_SIZE])
 
-        logHTTPTraffic(threadData.lastRequestMsg, redirectMsg)
+        logHTTPTraffic(threadData.lastRequestMsg, redirectMsg, start, time.time())
         logger.log(CUSTOM_LOGGING.TRAFFIC_IN, redirectMsg)
 
         if redurl:
@@ -123,11 +124,25 @@ class SmartRedirectHandler(urllib2.HTTPRedirectHandler):
 
             req.headers[HTTP_HEADER.HOST] = getHostHeader(redurl)
             if headers and HTTP_HEADER.SET_COOKIE in headers:
-                req.headers[HTTP_HEADER.COOKIE] = headers[HTTP_HEADER.SET_COOKIE].split(conf.cookieDel or DEFAULT_COOKIE_DELIMITER)[0]
+                cookies = dict()
+                delimiter = conf.cookieDel or DEFAULT_COOKIE_DELIMITER
+                last = None
+
+                for part in req.headers.get(HTTP_HEADER.COOKIE, "").split(delimiter) + headers.getheaders(HTTP_HEADER.SET_COOKIE):
+                    if '=' in part:
+                        part = part.strip()
+                        key, value = part.split('=', 1)
+                        cookies[key] = value
+                        last = key
+                    elif last:
+                        cookies[last] += "%s%s" % (delimiter, part)
+
+                req.headers[HTTP_HEADER.COOKIE] = delimiter.join("%s=%s" % (key, cookies[key]) for key in cookies)
+
             try:
                 result = urllib2.HTTPRedirectHandler.http_error_302(self, req, fp, code, msg, headers)
-            except urllib2.HTTPError, e:
-                result = e
+            except urllib2.HTTPError as ex:
+                result = ex
 
                 # Dirty hack for http://bugs.python.org/issue15701
                 try:
@@ -139,7 +154,7 @@ class SmartRedirectHandler(urllib2.HTTPRedirectHandler):
 
                 if not hasattr(result, "read"):
                     def _(self, length=None):
-                        return e.msg
+                        return ex.msg
                     result.read = types.MethodType(_, result)
 
                 if not getattr(result, "url", None):

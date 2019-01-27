@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 from lib.controller.handler import setHandler
@@ -16,8 +16,8 @@ from lib.core.enums import CONTENT_TYPE
 from lib.core.exception import SqlmapNoneDataException
 from lib.core.exception import SqlmapUnsupportedDBMSException
 from lib.core.settings import SUPPORTED_DBMS
-from lib.techniques.brute.use import columnExists
-from lib.techniques.brute.use import tableExists
+from lib.utils.brute import columnExists
+from lib.utils.brute import tableExists
 
 def action():
     """
@@ -75,7 +75,7 @@ def action():
     if conf.getPasswordHashes:
         try:
             conf.dumper.userSettings("database management system users password hashes", conf.dbmsHandler.getPasswordHashes(), "password hash", CONTENT_TYPE.PASSWORDS)
-        except SqlmapNoneDataException, ex:
+        except SqlmapNoneDataException as ex:
             logger.critical(ex)
         except:
             raise
@@ -83,7 +83,7 @@ def action():
     if conf.getPrivileges:
         try:
             conf.dumper.userSettings("database management system users privileges", conf.dbmsHandler.getPrivileges(), "privilege", CONTENT_TYPE.PRIVILEGES)
-        except SqlmapNoneDataException, ex:
+        except SqlmapNoneDataException as ex:
             logger.critical(ex)
         except:
             raise
@@ -91,7 +91,7 @@ def action():
     if conf.getRoles:
         try:
             conf.dumper.userSettings("database management system users roles", conf.dbmsHandler.getRoles(), "role", CONTENT_TYPE.ROLES)
-        except SqlmapNoneDataException, ex:
+        except SqlmapNoneDataException as ex:
             logger.critical(ex)
         except:
             raise
@@ -140,11 +140,11 @@ def action():
         conf.dbmsHandler.udfInjectCustom()
 
     # File system options
-    if conf.rFile:
-        conf.dumper.rFile(conf.dbmsHandler.readFile(conf.rFile))
+    if conf.fileRead:
+        conf.dumper.rFile(conf.dbmsHandler.readFile(conf.fileRead))
 
-    if conf.wFile:
-        conf.dbmsHandler.writeFile(conf.wFile, conf.dFile, conf.wFileType)
+    if conf.fileWrite:
+        conf.dbmsHandler.writeFile(conf.fileWrite, conf.fileDest, conf.fileWriteType)
 
     # Operating system options
     if conf.osCmd:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import re
@@ -46,7 +46,7 @@ class Fingerprint(GenericFingerprint):
         value += "active fingerprint: %s" % actVer
 
         if kb.bannerFp:
-            banVer = kb.bannerFp["dbmsVersion"] if 'dbmsVersion' in kb.bannerFp else None
+            banVer = kb.bannerFp.get("dbmsVersion")
             banVer = Format.getDbms([banVer])
             value += "\n%sbanner parsing fingerprint: %s" % (blank, banVer)
 
@@ -58,7 +58,7 @@ class Fingerprint(GenericFingerprint):
         return value
 
     def checkDbms(self):
-        if not conf.extensiveFp and (Backend.isDbmsWithin(ORACLE_ALIASES) or (conf.dbms or "").lower() in ORACLE_ALIASES):
+        if not conf.extensiveFp and Backend.isDbmsWithin(ORACLE_ALIASES):
             setDbms(DBMS.ORACLE)
 
             self.getBanner()
@@ -68,23 +68,23 @@ class Fingerprint(GenericFingerprint):
         infoMsg = "testing %s" % DBMS.ORACLE
         logger.info(infoMsg)
 
-        # NOTE: SELECT ROWNUM=ROWNUM FROM DUAL does not work connecting
-        # directly to the Oracle database
+        # NOTE: SELECT LENGTH(SYSDATE)=LENGTH(SYSDATE) FROM DUAL does
+        # not work connecting directly to the Oracle database
         if conf.direct:
             result = True
         else:
-            result = inject.checkBooleanExpression("ROWNUM=ROWNUM")
+            result = inject.checkBooleanExpression("LENGTH(SYSDATE)=LENGTH(SYSDATE)")
 
         if result:
             infoMsg = "confirming %s" % DBMS.ORACLE
             logger.info(infoMsg)
 
-            # NOTE: SELECT LENGTH(SYSDATE)=LENGTH(SYSDATE) FROM DUAL does
+            # NOTE: SELECT NVL(RAWTOHEX([RANDNUM1]),[RANDNUM1])=RAWTOHEX([RANDNUM1]) FROM DUAL does
             # not work connecting directly to the Oracle database
             if conf.direct:
                 result = True
             else:
-                result = inject.checkBooleanExpression("LENGTH(SYSDATE)=LENGTH(SYSDATE)")
+                result = inject.checkBooleanExpression("NVL(RAWTOHEX([RANDNUM1]),[RANDNUM1])=RAWTOHEX([RANDNUM1])")
 
             if not result:
                 warnMsg = "the back-end DBMS is not %s" % DBMS.ORACLE
@@ -104,7 +104,7 @@ class Fingerprint(GenericFingerprint):
 
             # Reference: https://en.wikipedia.org/wiki/Oracle_Database
             for version in ("12c", "11g", "10g", "9i", "8i"):
-                number = int(re.search("([\d]+)", version).group(1))
+                number = int(re.search(r"([\d]+)", version).group(1))
                 output = inject.checkBooleanExpression("%d=(SELECT SUBSTR((VERSION),1,%d) FROM SYS.PRODUCT_COMPONENT_VERSION WHERE ROWNUM=1)" % (number, 1 if number < 10 else 2))
 
                 if output:

